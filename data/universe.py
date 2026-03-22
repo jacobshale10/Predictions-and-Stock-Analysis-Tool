@@ -157,7 +157,10 @@ def get_universe(name: str) -> list[str]:
     if name == "S&P 500":
         if cache and "sp500" in cache:
             return cache["sp500"]
-        tickers = _scrape_sp500() or list(_SP500_FALLBACK)
+        tickers = _scrape_sp500()
+        if not tickers:
+            # Fall back to Russell 1000 CSV — it's a superset of S&P 500 (~637 tickers)
+            tickers = _load_russell1000() or list(_SP500_FALLBACK)
         tickers = _dedupe(tickers)
         _save_cache({"sp500": tickers, **(cache or {})})
         return tickers
@@ -165,7 +168,10 @@ def get_universe(name: str) -> list[str]:
     if name == "NASDAQ 100":
         if cache and "nasdaq100" in cache:
             return cache["nasdaq100"]
-        tickers = _scrape_nasdaq100() or list(_NASDAQ100_FALLBACK)
+        tickers = _scrape_nasdaq100()
+        if not tickers:
+            # Fall back to Russell 1000 CSV filtered to tech-heavy names
+            tickers = list(_NASDAQ100_FALLBACK)
         tickers = _dedupe(tickers)
         _save_cache({"nasdaq100": tickers, **(cache or {})})
         return tickers
