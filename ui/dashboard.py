@@ -91,8 +91,12 @@ def render():
 
         if result is None:
             st.error(
-                f"Could not retrieve data for **{ticker_input}**. "
-                "Please check the ticker symbol and try again."
+                f"**Could not retrieve data for {ticker_input}.**\n\n"
+                "Possible causes:\n"
+                "- Invalid ticker symbol — double-check spelling (e.g. AAPL, MSFT, UPS)\n"
+                "- Yahoo Finance rate limit — wait 30 seconds and click **Analyze →** again\n"
+                "- No price history available for this symbol\n\n"
+                "Try a well-known ticker like **AAPL** to confirm connectivity."
             )
             return
 

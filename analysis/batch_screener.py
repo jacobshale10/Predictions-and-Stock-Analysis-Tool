@@ -41,8 +41,8 @@ PASS1_WORKERS    = 8    # threads for fast_info pass
 PASS2_WORKERS    = 4    # threads for full analysis (more yfinance calls)
 PASS1_DELAY      = 0.05  # seconds between pass-1 requests
 PASS2_DELAY      = 0.3   # seconds between pass-2 requests
-MIN_MARKET_CAP   = 2e9   # $2B minimum
-MIN_DECLINE      = 0.12  # 12% decline from 52W high to enter pass 2
+MIN_MARKET_CAP   = 1e9   # $1B minimum (was $2B — lowered for broader coverage)
+MIN_DECLINE      = 0.03  # 3% decline from 52W high (was 12% — too strict in bull market)
 AI_DCF_TOP_N     = 15    # run AI DCF on top N by score
 
 

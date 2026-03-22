@@ -45,9 +45,49 @@ def get_price_data(symbol: str) -> Optional[dict]:
         if current_price is None:
             return None
 
-        hist = t.history(period="1y")
+        # Try primary history endpoint — wrap in try/except because yfinance
+        # can raise (not just return empty) when the network or ticker is bad
+        try:
+            hist = t.history(period="1y")
+        except Exception:
+            hist = pd.DataFrame()
+
+        # Fallback 1: yf.download uses a different API path and works when
+        # t.history() hits rate limits or returns empty
         if hist.empty:
-            return None
+            try:
+                hist = yf.download(
+                    symbol, period="1y", auto_adjust=True,
+                    progress=False, show_errors=False
+                )
+                # yf.download may return MultiIndex columns — flatten
+                if isinstance(hist.columns, pd.MultiIndex):
+                    hist.columns = hist.columns.get_level_values(0)
+            except Exception:
+                hist = pd.DataFrame()
+
+        # Fallback 2: use fast_info year_high/year_low when history is still empty
+        if hist.empty or "Close" not in hist.columns:
+            try:
+                fi2 = t.fast_info
+                yh = getattr(fi2, "year_high", None)
+                yl = getattr(fi2, "year_low", None)
+                vol = getattr(fi2, "three_month_average_volume", None)
+                if yh and yl:
+                    return {
+                        "current_price":  float(current_price),
+                        "price_52w_high": float(yh),
+                        "price_52w_low":  float(yl),
+                        "price_1m_ago":   None,
+                        "price_3m_ago":   None,
+                        "price_6m_ago":   None,
+                        "volume":         int(vol) if vol else None,
+                        "avg_volume":     int(vol) if vol else None,
+                        "history":        pd.DataFrame(),  # no chart data
+                    }
+            except Exception:
+                pass
+            return None  # truly no data available
 
         price_52w_high = float(hist["Close"].max())
         price_52w_low  = float(hist["Close"].min())
@@ -85,6 +125,18 @@ def get_fundamentals(symbol: str) -> Optional[dict]:
     try:
         t = _ticker(symbol)
         info = t.info or {}
+
+        # If t.info returned empty (rate-limited or API change), seed minimal
+        # fields from fast_info so the rest of the function degrades gracefully
+        if not info:
+            try:
+                fi = t.fast_info
+                info = {
+                    "marketCap":        getattr(fi, "market_cap", None),
+                    "sharesOutstanding": getattr(fi, "shares", None),
+                }
+            except Exception:
+                pass
 
         company_name = info.get("longName") or info.get("shortName") or symbol.upper()
         sector       = info.get("sector")

@@ -113,10 +113,10 @@ def render():
 
         min_score = st.select_slider(
             "Min Setup Score",
-            options=[0.40, 0.50, 0.60, 0.72],
-            value=0.50,
-            format_func=lambda x: f"{x:.2f}  ({'STRONG' if x >= 0.72 else 'MODERATE+' if x >= 0.50 else 'ALL'})",
-            help="0.72+ = STRONG setups only. 0.50+ includes MODERATE.",
+            options=[0.30, 0.40, 0.50, 0.60, 0.72],
+            value=0.40,
+            format_func=lambda x: f"{x:.2f}  ({'STRONG' if x >= 0.72 else 'MODERATE+' if x >= 0.50 else 'MODERATE' if x >= 0.40 else 'ALL'})",
+            help="0.72+ = STRONG setups only. 0.40+ = MODERATE and above. 0.30 = cast widest net.",
         )
 
         max_results = st.selectbox(
