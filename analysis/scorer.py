@@ -2,7 +2,7 @@
 analysis/scorer.py — Weighted scoring engine.
 
 Takes a ScreenerResult and produces a SetupScore with:
-  - 6 sub-scores (each 0.0–1.0)
+  - 7 sub-scores (each 0.0–1.0), including DCF margin of safety
   - weighted total score (0.0–1.0)
   - grade: STRONG SETUP / MODERATE SETUP / WEAK SETUP
 
@@ -26,12 +26,13 @@ from config import (
 @dataclass
 class SetupScore:
     # Raw sub-scores (0.0–1.0)
-    price_decline_score:    float
-    pe_vs_sector_score:     float
-    revenue_growth_score:   float
-    earnings_growth_score:  float
-    analyst_consensus_score: float
-    news_catalyst_score:    float
+    price_decline_score:      float
+    pe_vs_sector_score:       float
+    revenue_growth_score:     float
+    earnings_growth_score:    float
+    analyst_consensus_score:  float
+    news_catalyst_score:      float
+    dcf_mos_score:            float   # DCF margin of safety (0.4 neutral if unavailable)
 
     # Weighted total
     total_score: float
@@ -53,6 +54,7 @@ class SetupScore:
             "Earnings Growth":     self.earnings_growth_score,
             "Analyst Consensus":   self.analyst_consensus_score,
             "News Catalyst":       self.news_catalyst_score,
+            "DCF Margin of Safety": self.dcf_mos_score,
         }
 
 
@@ -185,13 +187,40 @@ def _score_news_catalyst(label: str) -> float:
     return catalyst_scores.get(label, 0.5)
 
 
+def _score_dcf_mos(margin_of_safety: Optional[float]) -> float:
+    """
+    Score the DCF margin of safety.
+    Positive MoS = stock trading below intrinsic value (good).
+    """
+    if margin_of_safety is None:
+        return 0.4  # neutral when data unavailable
+    m = margin_of_safety
+    if m < -0.30:
+        return 0.0   # >30% overvalued
+    if m < 0:
+        return 0.0 + (m + 0.30) / 0.30 * 0.30   # -30% to 0%: 0.0 → 0.3
+    if m < 0.10:
+        return 0.30 + m / 0.10 * 0.20            # 0–10% MoS: 0.3 → 0.5
+    if m < 0.25:
+        return 0.50 + (m - 0.10) / 0.15 * 0.30  # 10–25% MoS: 0.5 → 0.8
+    if m < 0.40:
+        return 0.80 + (m - 0.25) / 0.15 * 0.20  # 25–40% MoS: 0.8 → 1.0
+    return 1.0   # >40% MoS: fully undervalued
+
+
 # ---------------------------------------------------------------------------
 # Main scoring function
 # ---------------------------------------------------------------------------
 
-def score(result: ScreenerResult) -> SetupScore:
-    """Compute the weighted setup score from a ScreenerResult."""
+def score(result: ScreenerResult, dcf_margin_of_safety: Optional[float] = None) -> SetupScore:
+    """
+    Compute the weighted setup score from a ScreenerResult.
 
+    Args:
+        result:                ScreenerResult from screener.run()
+        dcf_margin_of_safety:  Optional DCF margin of safety (from ai_dcf or dcf module).
+                               If None, the DCF dimension uses a neutral score (0.4).
+    """
     pe_negative = (
         result.forward_pe is not None and result.forward_pe < 0
     ) or (
@@ -204,14 +233,16 @@ def score(result: ScreenerResult) -> SetupScore:
     s_earnings  = _score_growth(result.earnings_qoq, eps_positive=result.eps_positive)
     s_analyst   = _score_analyst_consensus(result.consensus_rating, result.analyst_upside)
     s_catalyst  = _score_news_catalyst(result.news_label)
+    s_dcf       = _score_dcf_mos(dcf_margin_of_safety)
 
     total = (
-        WEIGHTS["price_decline"]     * s_decline  +
-        WEIGHTS["pe_vs_sector"]      * s_pe       +
-        WEIGHTS["revenue_growth"]    * s_revenue  +
-        WEIGHTS["earnings_growth"]   * s_earnings +
-        WEIGHTS["analyst_consensus"] * s_analyst  +
-        WEIGHTS["news_catalyst"]     * s_catalyst
+        WEIGHTS["price_decline"]        * s_decline  +
+        WEIGHTS["pe_vs_sector"]         * s_pe       +
+        WEIGHTS["revenue_growth"]       * s_revenue  +
+        WEIGHTS["earnings_growth"]      * s_earnings +
+        WEIGHTS["analyst_consensus"]    * s_analyst  +
+        WEIGHTS["news_catalyst"]        * s_catalyst +
+        WEIGHTS["dcf_margin_of_safety"] * s_dcf
     )
     total = round(total, 4)
 
@@ -232,6 +263,7 @@ def score(result: ScreenerResult) -> SetupScore:
         earnings_growth_score=round(s_earnings, 4),
         analyst_consensus_score=round(s_analyst, 4),
         news_catalyst_score=round(s_catalyst, 4),
+        dcf_mos_score=round(s_dcf, 4),
         total_score=total,
         grade=grade,
         grade_color=color,

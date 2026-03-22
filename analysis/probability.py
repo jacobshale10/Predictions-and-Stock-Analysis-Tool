@@ -10,10 +10,9 @@ than the DCF alone, given yfinance FCF data gaps.)
 """
 
 from analysis.scorer import SetupScore
-from analysis.dcf import DCFResult
 
 
-def estimate(setup_score: SetupScore, dcf_result: DCFResult) -> dict:
+def estimate(setup_score: SetupScore, dcf_result) -> dict:
     """
     Returns:
         probability (float, 0.0–1.0)

@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 from database import db
-from ui import dashboard, trade_log_ui, backtest_ui
+from ui import scanner_ui, dashboard, trade_log_ui, backtest_ui
 from ui import styles
 
 # Inject premium CSS theme
@@ -25,17 +25,19 @@ styles.inject()
 # Initialize database on every startup (idempotent)
 db.init_db()
 
-# ── Navigation ──────────────────────────────────────────────────────────────
+# ── Navigation ────────────────────────────────────────────────────────────────
 PAGES = {
-    "Screener":   dashboard,
-    "Trade Log":  trade_log_ui,
-    "Backtest":   backtest_ui,
+    "Market Scanner": scanner_ui,
+    "Stock Detail":   dashboard,
+    "Trade Log":      trade_log_ui,
+    "Backtest":       backtest_ui,
 }
 
 NAV_ICONS = {
-    "Screener":  "⬡",
-    "Trade Log": "◈",
-    "Backtest":  "◉",
+    "Market Scanner": "⬡",
+    "Stock Detail":   "◎",
+    "Trade Log":      "◈",
+    "Backtest":       "◉",
 }
 
 with st.sidebar:
@@ -44,7 +46,7 @@ with st.sidebar:
         """
 <div class="brand-header">
   <div class="brand-name">MR Screener</div>
-  <div class="brand-tagline">Mean Reversion · Fundamental Dislocation</div>
+  <div class="brand-tagline">Mean Reversion · AI-Powered · Market Inefficiencies</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -56,7 +58,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # Support nav redirect from dashboard "Log This Trade" button
+    # Support nav redirect from scanner → detail and dashboard → trade log
     default_page = st.session_state.pop("nav_page", None)
     page_keys = list(PAGES.keys())
 
