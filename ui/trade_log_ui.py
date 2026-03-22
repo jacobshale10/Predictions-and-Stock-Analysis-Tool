@@ -12,11 +12,17 @@ from datetime import date
 
 from database import db
 from data import fetcher
+from ui import styles
 
 
 def render():
-    st.title("Trade Log")
-    st.caption("Track entries, exits, and performance for your mean reversion setups.")
+    st.markdown('<h1 style="margin-bottom:0;">Trade Log</h1>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:13.5px;color:rgba(255,255,255,0.45);margin-bottom:24px;">'
+        f'Track entries, exits, and performance for your mean reversion setups.'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     db.init_db()
 
@@ -26,7 +32,7 @@ def render():
 
 
 def _render_add_form():
-    st.subheader("Log New Trade")
+    st.markdown(styles.section_header("Log New Trade"), unsafe_allow_html=True)
 
     # Pre-fill from dashboard "Log This Trade" button
     prefill = st.session_state.pop("prefill_trade", {})
@@ -38,7 +44,7 @@ def _render_add_form():
             ticker = st.text_input(
                 "Ticker *",
                 value=prefill.get("ticker", ""),
-                placeholder="e.g. UPS",
+                placeholder="e.g. UPS, SPY, AAPL",
             ).upper().strip()
             company_name = st.text_input(
                 "Company Name",
@@ -50,7 +56,7 @@ def _render_add_form():
             )
             entry_price = st.number_input(
                 "Entry Price (USD) *",
-                value=float(prefill.get("entry_price", 0.0)),
+                value=max(0.01, float(prefill.get("entry_price", 0.01))),
                 min_value=0.01,
                 format="%.2f",
             )
@@ -78,7 +84,6 @@ def _render_add_form():
                 index=catalyst_idx,
                 help="Override the automatic news classification with your own judgment.",
             )
-
             score_at_entry = st.number_input(
                 "Setup Score at Entry",
                 value=float(prefill.get("score_at_entry", 0.0)),
@@ -94,11 +99,11 @@ def _render_add_form():
 
         thesis_notes = st.text_area(
             "Thesis Notes",
-            placeholder="Why are you entering this trade? What's the catalyst type? What's your exit thesis?",
+            placeholder="Why are you entering this trade? What is the catalyst type? What is your exit thesis?",
             height=100,
         )
 
-        submitted = st.form_submit_button("Save Trade", type="primary")
+        submitted = st.form_submit_button("Save Trade →", type="primary")
 
         if submitted:
             if not ticker:
@@ -119,12 +124,12 @@ def _render_add_form():
                     catalyst_type=catalyst_type,
                     thesis_notes=thesis_notes or None,
                 )
-                st.success(f"Trade logged: {ticker} @ ${entry_price:.2f}")
+                st.success(f"Trade logged: **{ticker}** @ ${entry_price:.2f}")
                 st.rerun()
 
 
 def _render_trade_history():
-    st.subheader("Trade History")
+    st.markdown(styles.section_header("Trade History"), unsafe_allow_html=True)
 
     trades = db.get_all_trades()
     if not trades:
@@ -133,17 +138,17 @@ def _render_trade_history():
 
     df = pd.DataFrame(trades)
 
-    # --- Live P&L for open trades ---
+    # Live P&L for open trades
     open_mask = df["exit_date"].isna()
     if open_mask.any():
-        with st.spinner("Fetching live prices for open trades..."):
+        with st.spinner("Fetching live prices for open trades…"):
             for idx, row in df[open_mask].iterrows():
                 live_price = fetcher.get_current_price(row["ticker"])
                 if live_price and row["entry_price"]:
                     df.at[idx, "live_pnl_pct"] = (live_price - row["entry_price"]) / row["entry_price"]
                     df.at[idx, "live_price"]    = live_price
 
-    # --- Display columns ---
+    # Display columns
     display_cols = [
         "id", "ticker", "company_name", "entry_date", "entry_price",
         "score_at_entry", "grade_at_entry", "catalyst_type",
@@ -154,7 +159,6 @@ def _render_trade_history():
 
     display_df = df[[c for c in display_cols if c in df.columns]].copy()
 
-    # Format percentages
     for pct_col in ["pnl_pct", "live_pnl_pct"]:
         if pct_col in display_df.columns:
             display_df[pct_col] = display_df[pct_col].apply(
@@ -192,10 +196,11 @@ def _render_trade_history():
         hide_index=True,
     )
 
-    # --- Close a trade ---
+    # Close a trade
     open_trades = [t for t in trades if not t.get("exit_date")]
     if open_trades:
-        st.subheader("Close a Trade")
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown(styles.section_header("Close a Trade"), unsafe_allow_html=True)
         with st.form("close_trade_form"):
             trade_options = {
                 f"#{t['id']} {t['ticker']} @ ${t['entry_price']:.2f} ({t['entry_date']})": t["id"]
@@ -215,7 +220,7 @@ def _render_trade_history():
                 )
                 review_notes = st.text_area("Post-Trade Review Notes", height=80)
 
-            close_submitted = st.form_submit_button("Record Exit", type="primary")
+            close_submitted = st.form_submit_button("Record Exit →", type="primary")
             if close_submitted:
                 db.update_trade_exit(
                     trade_id=trade_id,
@@ -227,7 +232,7 @@ def _render_trade_history():
                 st.success("Trade exit recorded.")
                 st.rerun()
 
-    # --- Delete a trade ---
+    # Delete a trade
     with st.expander("Delete a trade (permanent)"):
         all_options = {
             f"#{t['id']} {t['ticker']} ({t['entry_date']})": t["id"]

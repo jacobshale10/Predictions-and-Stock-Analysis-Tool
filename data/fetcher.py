@@ -24,11 +24,24 @@ def get_price_data(symbol: str) -> Optional[dict]:
         t = _ticker(symbol)
         info = t.info or {}
 
-        current_price = (
-            info.get("currentPrice")
-            or info.get("regularMarketPrice")
-            or info.get("previousClose")
-        )
+        # fast_info.last_price is reliable for stocks and ETFs in modern yfinance
+        current_price = None
+        try:
+            fi = t.fast_info
+            lp = fi.last_price if hasattr(fi, "last_price") else None
+            if lp and lp > 0:
+                current_price = float(lp)
+        except Exception:
+            pass
+
+        if current_price is None:
+            current_price = (
+                info.get("currentPrice")
+                or info.get("regularMarketPrice")
+                or info.get("navPrice")
+                or info.get("previousClose")
+            )
+
         if current_price is None:
             return None
 
@@ -239,10 +252,19 @@ def get_current_price(symbol: str) -> Optional[float]:
     """Fast single-price fetch for live P&L in the trade log."""
     try:
         t = _ticker(symbol)
+        # fast_info is the fastest path and works for ETFs + stocks
+        try:
+            fi = t.fast_info
+            lp = fi.last_price if hasattr(fi, "last_price") else None
+            if lp and lp > 0:
+                return float(lp)
+        except Exception:
+            pass
         info = t.info or {}
         price = (
             info.get("currentPrice")
             or info.get("regularMarketPrice")
+            or info.get("navPrice")
             or info.get("previousClose")
         )
         return float(price) if price else None
