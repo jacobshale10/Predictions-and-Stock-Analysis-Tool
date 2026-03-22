@@ -21,9 +21,10 @@ Inspired by setups like UPS (2023 guidance cut), UNH (2024 regulatory overhang),
 
 ### Step 1: Install Python
 
-- Go to **python.org/downloads**
-- Download Python **3.11 or newer**
-- **Windows**: check "Add Python to PATH" during installation
+- Go to **python.org/downloads/release/python-3129**
+- Download **Python 3.12** (Windows installer 64-bit)
+- **Important:** Do NOT install Python 3.13 or 3.14 — some required packages don't support them yet
+- **Windows**: check "Add Python to PATH" during installation, then click Install
 - **Mac**: Python may already be installed — open Terminal and type: `python3 --version`
 
 ### Step 2: Download this project
