@@ -97,18 +97,28 @@ def render():
             return
 
         with st.spinner("Calculating WACC and running DCF…"):
-            fund_data   = fetcher.get_fundamentals(ticker_input)
-            wacc_result = wacc_module.calculate(ticker_input, fund_data or {})
-            dcf_result  = ai_dcf_run(
-                symbol=ticker_input,
-                current_price=result.current_price,
-                fundamentals=fund_data or {},
-                wacc_result=wacc_result,
-                claude_api_key=claude_api_key or None,
-            )
+            fund_data = fetcher.get_fundamentals(ticker_input)
+            try:
+                wacc_result = wacc_module.calculate(ticker_input, fund_data or {})
+            except Exception:
+                wacc_result = wacc_module.default_wacc()
+            try:
+                dcf_result = ai_dcf_run(
+                    symbol=ticker_input,
+                    current_price=result.current_price,
+                    fundamentals=fund_data or {},
+                    wacc_result=wacc_result,
+                    claude_api_key=claude_api_key or None,
+                )
+            except Exception:
+                dcf_result = None
 
         # Score includes DCF MoS
-        dcf_mos = dcf_result.base.margin_of_safety if dcf_result and not dcf_result.error else None
+        dcf_mos = (
+            dcf_result.base.margin_of_safety
+            if dcf_result and not dcf_result.error and dcf_result.base.margin_of_safety is not None
+            else None
+        )
         setup_score = scorer.score(result, dcf_margin_of_safety=dcf_mos)
         prob_result = probability.estimate(setup_score, dcf_result)
 
@@ -287,7 +297,9 @@ def render():
         unsafe_allow_html=True,
     )
 
-    if dcf_result.error:
+    if dcf_result is None:
+        st.warning("DCF unavailable: valuation model encountered an error. Screener results above are still valid.")
+    elif dcf_result.error:
         st.warning(f"DCF unavailable: {dcf_result.error}")
     else:
         dcf_col1, dcf_col2 = st.columns([2, 1])
@@ -304,9 +316,12 @@ def render():
                 st.plotly_chart(charts.build_dcf_bar(scenarios), use_container_width=True)
 
         with dcf_col2:
-            mos = dcf_result.base.margin_of_safety
+            mos = dcf_result.base.margin_of_safety if dcf_result else None
             mos_color = styles.GREEN if mos and mos > 0 else styles.RED
-            growth_label = "Claude-selected" if dcf_result.ai_powered else dcf_result.growth_source.replace("_", " ")
+            growth_label = (
+                "Claude-selected" if dcf_result and dcf_result.ai_powered
+                else (dcf_result.growth_source.replace("_", " ") if dcf_result else "N/A")
+            )
             st.markdown(
                 f'<div style="background:{styles.SURFACE};border:1px solid {styles.BORDER};'
                 f'border-radius:12px;padding:20px 22px;margin-top:8px;">'
@@ -328,7 +343,7 @@ def render():
             )
 
         # AI assessment block
-        if dcf_result.ai_powered and dcf_result.ai_assessment:
+        if dcf_result and dcf_result.ai_powered and dcf_result.ai_assessment:
             conf_color = {
                 "high":   styles.GREEN,
                 "medium": styles.YELLOW,
@@ -415,7 +430,11 @@ def render():
 
     # ── Raw data ──────────────────────────────────────────────────────────────
     with st.expander("Raw data (verify inputs)"):
-        mos_val = dcf_result.base.margin_of_safety if dcf_result and not dcf_result.error else None
+        mos_val = (
+            dcf_result.base.margin_of_safety
+            if dcf_result and not dcf_result.error and dcf_result.base.margin_of_safety is not None
+            else None
+        )
         st.json({
             "current_price":         result.current_price,
             "price_52w_high":        result.price_52w_high,
@@ -449,7 +468,11 @@ def render():
     col_log, _ = st.columns([1, 3])
     with col_log:
         if st.button("Log This Trade →", type="secondary", use_container_width=True):
-            mos_val = dcf_result.base.margin_of_safety if dcf_result and not dcf_result.error else None
+            mos_val = (
+                dcf_result.base.margin_of_safety
+                if dcf_result and not dcf_result.error and dcf_result.base.margin_of_safety is not None
+                else None
+            )
             st.session_state["prefill_trade"] = {
                 "ticker":              result.ticker,
                 "company_name":        result.company_name,

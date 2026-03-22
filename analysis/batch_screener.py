@@ -262,25 +262,23 @@ def scan(
     total = len(tickers)
 
     # ── PASS 1: Fast filter ────────────────────────────────────────────────
+    # IMPORTANT: progress_cb MUST only be called from the main thread.
+    # Worker functions must not call it — Streamlit raises NoSessionContext
+    # when UI methods are invoked from ThreadPoolExecutor background threads.
     pass1_results = []
-    completed = 0
-
-    def _p1_worker(t):
-        nonlocal completed
-        r = _pass1_check(t)
-        completed += 1
-        if progress_cb:
-            progress_cb(completed, total, f"Pass 1: filtering {t}…")
-        return r
 
     with ThreadPoolExecutor(max_workers=PASS1_WORKERS) as ex:
-        futures = {ex.submit(_p1_worker, t): t for t in tickers}
+        futures = {ex.submit(_pass1_check, t): t for t in tickers}
+        completed = 0
         for fut in as_completed(futures):
             r = fut.result()
+            completed += 1
             if r:
                 pass1_results.append(r["ticker"])
+            # progress_cb called here = main thread ✓
+            if progress_cb:
+                progress_cb(completed, total, f"Pass 1: quick filter {completed}/{total}…")
 
-    # Sort by decline desc for more interesting candidates first
     pass1_results = list(dict.fromkeys(pass1_results))  # dedupe
 
     if progress_cb:
@@ -291,24 +289,20 @@ def scan(
 
     # ── PASS 2: Full scoring ───────────────────────────────────────────────
     scan_results = []
-    completed_p2 = 0
-
-    def _p2_worker(t):
-        nonlocal completed_p2
-        r = _pass2_analyze(t)
-        completed_p2 += 1
-        if progress_cb:
-            progress_cb(completed_p2, len(pass1_results), f"Pass 2: analyzing {t}…")
-        return r
+    p2_total = len(pass1_results)
 
     with ThreadPoolExecutor(max_workers=PASS2_WORKERS) as ex:
-        futures = {ex.submit(_p2_worker, t): t for t in pass1_results}
+        futures = {ex.submit(_pass2_analyze, t): t for t in pass1_results}
+        completed_p2 = 0
         for fut in as_completed(futures):
             r = fut.result()
+            completed_p2 += 1
             if r and r.setup_score >= min_score:
                 scan_results.append(r)
+            # progress_cb called here = main thread ✓
+            if progress_cb:
+                progress_cb(completed_p2, p2_total, f"Pass 2: full analysis {completed_p2}/{p2_total}…")
 
-    # Sort by score
     scan_results.sort(key=lambda x: x.setup_score, reverse=True)
 
     # ── PASS 3: AI DCF on top N ────────────────────────────────────────────
@@ -317,11 +311,11 @@ def scan(
         if progress_cb:
             progress_cb(0, len(top_n), f"AI DCF: analyzing top {len(top_n)} candidates…")
 
+        from analysis.wacc import calculate as wacc_calc
         for i, sr in enumerate(top_n):
             if progress_cb:
-                progress_cb(i + 1, len(top_n), f"AI DCF: {sr.ticker}…")
+                progress_cb(i + 1, len(top_n), f"AI DCF: {sr.ticker} ({i+1}/{len(top_n)})…")
             fund = get_fundamentals(sr.ticker) or {}
-            from analysis.wacc import calculate as wacc_calc
             wacc_res = wacc_calc(sr.ticker, fund)
             sr = _pass3_ai_dcf(sr, fund, wacc_res, claude_api_key)
             scan_results[i] = sr
